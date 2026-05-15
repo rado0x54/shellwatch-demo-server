@@ -106,7 +106,13 @@ ShellWatch's `onboardingEndpoints` config writes per-principal authorized-keys f
 
 ## Releases
 
-Push a tag matching `v*.*.*` or trigger the **Release** workflow from the Actions tab. The workflow publishes three tags per release:
+Releases run via the **Release** workflow's `workflow_dispatch` trigger from `main`:
+
+1. Actions → Release → Run workflow.
+2. Enter the version as `X.Y.Z` (no `v` prefix — the `v` is added automatically).
+3. The workflow validates the version (format, monotonic vs previous tag, no existing tag/release), builds the image, pushes it to GHCR, then tags the commit and creates the GitHub Release. Tagging happens after a successful push, so failed builds leave no orphan tags.
+
+Each successful release publishes:
 
 - `ghcr.io/rado0x54/shellwatch-demo-server:vX.Y.Z`
 - `ghcr.io/rado0x54/shellwatch-demo-server:latest`
