@@ -14,4 +14,4 @@ for type in ed25519 rsa ecdsa; do
     fi
 done
 
-exec /usr/sbin/sshd -D -e
+exec /usr/sbin/sshd -D -e -o "LogLevel=${SSHD_LOG_LEVEL:-INFO}"

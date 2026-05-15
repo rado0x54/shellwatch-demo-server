@@ -23,6 +23,8 @@ services:
       # Only host keys persist — /etc/ssh stays in the image so sshd_config
       # changes always take effect on rebuild.
       - shellwatch-demo-host-keys:/var/lib/demo/host-keys
+    # environment:
+    #   SSHD_LOG_LEVEL: VERBOSE   # default INFO; VERBOSE logs key fingerprints
     restart: unless-stopped
     mem_limit: 256m
     pids_limit: 200

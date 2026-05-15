@@ -28,7 +28,16 @@ PubkeyAcceptedAlgorithms +webauthn-sk-ecdsa-sha2-nistp256@openssh.com
 # Until then the cert algorithm is allowed but no certs will validate.
 # TrustedUserCAKeys /etc/ssh/shellwatch_ca.pub
 
-LogLevel VERBOSE
+# Off so bind-mounted authorized_keys files (owned by the host UID under
+# Docker Desktop) aren't rejected. Safe here: PasswordAuthentication is off
+# and every principal is pinned to a ForceCommand, so the ownership/mode
+# check isn't gating anything meaningful.
+StrictModes no
+
+# LogLevel is set on the sshd command line in entrypoint.sh (driven by
+# $SSHD_LOG_LEVEL, default INFO). Override there, not here, so we have one
+# source of truth.
+
 UseDNS no
 
 MaxStartups 10:30:60
