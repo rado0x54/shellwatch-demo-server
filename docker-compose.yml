@@ -16,6 +16,7 @@ services:
     ports:
       - "2222:22"
     volumes:
+      - ./authorized_keys:/var/lib/demo/keys/sw-snake:ro
       - ./authorized_keys:/var/lib/demo/keys/sw-matrix:ro
       - ./authorized_keys:/var/lib/demo/keys/sw-sudoku:ro
       # Only host keys persist — /etc/ssh stays in the image so sshd_config

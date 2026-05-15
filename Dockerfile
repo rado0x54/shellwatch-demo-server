@@ -19,11 +19,11 @@ RUN autoreconf -i && \
 
 FROM alpine:3.20
 
-ARG DEMO_USERS="sw-matrix sw-sudoku"
+ARG DEMO_USERS="sw-snake sw-matrix sw-sudoku"
 
 RUN apk add --no-cache \
       openssh-server \
-      cmatrix \
+      bsd-games cmatrix \
       ncurses \
       tini
 

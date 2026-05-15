@@ -48,6 +48,9 @@ GatewayPorts no
 Subsystem sftp internal-sftp
 # (sftp is loaded but every user's ForceCommand replaces it; no file access)
 
+Match User sw-snake
+    ForceCommand /usr/local/lib/demo/snake.sh
+
 Match User sw-matrix
     ForceCommand /usr/local/lib/demo/matrix.sh
 
