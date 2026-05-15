@@ -1,0 +1,29 @@
+# SPDX-License-Identifier: MIT
+# Standalone compose for local development and smoke-testing the demo SSH
+# server. Drop your pubkey into ./authorized_keys (gitignored) before
+# bringing this up — every demo principal here points at the same file,
+# so the same key works for all three. Production deployments use one
+# file per principal via ShellWatch's authorizedKeyFile delivery; see the
+# compose snippet in README.md.
+
+services:
+  shellwatch-demo:
+    build: .
+    # To run the published image instead of building locally, comment
+    # `build: .` above and uncomment:
+    # image: ghcr.io/rado0x54/shellwatch-demo-server:latest
+    container_name: shellwatch-demo
+    ports:
+      - "2222:22"
+    volumes:
+      - ./authorized_keys:/var/lib/demo/keys/sw-matrix:ro
+      - ./authorized_keys:/var/lib/demo/keys/sw-sudoku:ro
+      # Only host keys persist — /etc/ssh stays in the image so sshd_config
+      # changes always take effect on rebuild.
+      - shellwatch-demo-host-keys:/var/lib/demo/host-keys
+    restart: unless-stopped
+    mem_limit: 256m
+    pids_limit: 200
+
+volumes:
+  shellwatch-demo-host-keys:

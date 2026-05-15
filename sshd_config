@@ -1,0 +1,55 @@
+# SPDX-License-Identifier: MIT
+# ShellWatch demo SSH server config.
+# Every demo user runs a single ForceCommand payload. No interactive shells.
+
+Port 22
+
+# Host keys live outside /etc/ssh so a persistence volume can be mounted
+# without shadowing sshd_config or the rest of /etc/ssh. The entrypoint
+# generates any missing keys on startup.
+HostKey /var/lib/demo/host-keys/ssh_host_ed25519_key
+HostKey /var/lib/demo/host-keys/ssh_host_rsa_key
+HostKey /var/lib/demo/host-keys/ssh_host_ecdsa_key
+
+PermitRootLogin no
+PasswordAuthentication no
+KbdInteractiveAuthentication no
+PubkeyAuthentication yes
+AuthorizedKeysFile /var/lib/demo/keys/%u
+
+# Explicitly allow ShellWatch's headline credential (WebAuthn-anchored sk key).
+# `+` appends to OpenSSH's defaults so we don't accidentally narrow other algorithms.
+# The cert variant (webauthn-sk-ecdsa-sha2-nistp256-cert-v01@openssh.com) is not yet
+# a recognized keytype in OpenSSH 9.7p1's PubkeyAcceptedAlgorithms registry; add it
+# back to this line once it lands upstream (or when ShellWatch acts as CA).
+PubkeyAcceptedAlgorithms +webauthn-sk-ecdsa-sha2-nistp256@openssh.com
+
+# Uncomment and point at a ShellWatch CA pubkey to make the cert variant useful.
+# Until then the cert algorithm is allowed but no certs will validate.
+# TrustedUserCAKeys /etc/ssh/shellwatch_ca.pub
+
+LogLevel VERBOSE
+UseDNS no
+
+MaxStartups 10:30:60
+LoginGraceTime 10
+ClientAliveInterval 15
+ClientAliveCountMax 2
+
+PermitTTY yes
+AllowTcpForwarding no
+AllowAgentForwarding no
+X11Forwarding no
+PermitTunnel no
+PermitUserRC no
+PermitUserEnvironment no
+GatewayPorts no
+
+Subsystem sftp internal-sftp
+# (sftp is loaded but every user's ForceCommand replaces it; no file access)
+
+Match User sw-matrix
+    ForceCommand /usr/local/lib/demo/matrix.sh
+
+Match User sw-sudoku
+    ForceCommand /usr/local/lib/demo/sudoku.sh

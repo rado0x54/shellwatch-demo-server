@@ -1,0 +1,12 @@
+# IDE / editor
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# macOS
+.DS_Store
+
+# Local authorized_keys for docker-compose dev (shared by all principals)
+/authorized_keys
