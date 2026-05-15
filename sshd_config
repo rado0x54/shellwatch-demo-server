@@ -56,3 +56,6 @@ Match User sw-matrix
 
 Match User sw-sudoku
     ForceCommand /usr/local/lib/demo/sudoku.sh
+
+Match User sw-2048
+    ForceCommand /usr/local/lib/demo/2048.sh

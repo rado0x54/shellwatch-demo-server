@@ -17,9 +17,19 @@ RUN autoreconf -i && \
     make install DESTDIR=/out
 
 
+# Build mevdschee/2048.c from source. Not packaged for Alpine (the
+# gnome-2048/libretro-2048 hits are unrelated). Single C file, libc only.
+FROM alpine:3.20 AS twentyfortyeight-build
+RUN apk add --no-cache build-base git
+WORKDIR /src
+RUN git clone --depth 1 https://github.com/mevdschee/2048.c
+WORKDIR /src/2048.c
+RUN make -j"$(nproc)" && make install PREFIX=/usr DESTDIR=/out
+
+
 FROM alpine:3.20
 
-ARG DEMO_USERS="sw-snake sw-matrix sw-sudoku"
+ARG DEMO_USERS="sw-snake sw-matrix sw-sudoku sw-2048"
 
 RUN apk add --no-cache \
       openssh-server \
@@ -27,8 +37,9 @@ RUN apk add --no-cache \
       ncurses \
       tini
 
-# nudoku binary + locale files from the build stage
+# nudoku + 2048 binaries from the build stages
 COPY --from=nudoku-build /out/usr/ /usr/
+COPY --from=twentyfortyeight-build /out/usr/ /usr/
 
 # One Linux user per principal. /bin/ash so ForceCommand works (nologin would
 # cause sshd to skip ForceCommand). -H avoids creating per-user home dirs;

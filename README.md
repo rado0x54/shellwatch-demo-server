@@ -5,7 +5,7 @@ A minimal Alpine-based SSH server that hosts non-interactive ASCII payloads unde
 ## What it is
 
 - Single container, single open port (22).
-- One Linux user per demo (`sw-snake`, `sw-matrix`, `sw-sudoku`).
+- One Linux user per demo (`sw-snake`, `sw-matrix`, `sw-sudoku`, `sw-2048`).
 - Each user's session runs **one** command and exits — no shell, no arbitrary execution.
 - Authorized keys live in `/var/lib/demo/keys/%u` and are read at login time; mount this directory from your ShellWatch deployment to populate it dynamically.
 
@@ -16,6 +16,7 @@ A minimal Alpine-based SSH server that hosts non-interactive ASCII payloads unde
 | `sw-snake` | `snake` (from `bsd-games`) |
 | `sw-matrix` | `cmatrix -s -u 5` (any key exits) |
 | `sw-sudoku` | `nudoku` (built from source, `--without-cairo`) |
+| `sw-2048` | `2048` (built from source — [mevdschee/2048.c](https://github.com/mevdschee/2048.c)) |
 
 Each payload is wrapped in `timeout 600` so a wedged client cannot pin a session. Turn-based payloads like `nudoku` are the agent-friendly headline — they compose well with the audit-log/HITL story. Real-time payloads (`snake`, `cmatrix`) stay for quick visual smoke tests of the SSH path; `ninvaders` and `bastet` were dropped early on for being too action-heavy.
 
@@ -46,6 +47,7 @@ docker compose up --build
 ssh -p 2222 -i ~/.ssh/your_key sw-sudoku@localhost
 ssh -p 2222 -i ~/.ssh/your_key sw-matrix@localhost
 ssh -p 2222 -i ~/.ssh/your_key sw-snake@localhost
+ssh -p 2222 -i ~/.ssh/your_key sw-2048@localhost
 ```
 
 Host keys are persisted in the `shellwatch-demo-host-keys` named volume, so subsequent `docker compose up` runs don't trigger fingerprint-change warnings on your client. In production every principal has its own `authorized_keys` file populated by ShellWatch — the all-principals-share-one-file pattern here is a local-dev convenience only.
