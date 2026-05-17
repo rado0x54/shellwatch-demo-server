@@ -35,6 +35,7 @@ RUN apk add --no-cache \
       openssh-server \
       bsd-games cmatrix \
       ncurses \
+      curl \
       tini
 
 # nudoku + 2048 binaries from the build stages

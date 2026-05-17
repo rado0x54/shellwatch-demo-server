@@ -25,6 +25,11 @@ services:
       - shellwatch-demo-host-keys:/var/lib/demo/host-keys
     # environment:
     #   SSHD_LOG_LEVEL: VERBOSE   # default INFO; VERBOSE logs key fingerprints
+    #   # Set SHELLWATCH_KEYS_URL to switch from file-mode (bind mount above) to
+    #   # endpoint-mode: sshd's AuthorizedKeysCommand will hit this URL on every
+    #   # offered key with ?user=&type=&fingerprint=. See README "Key delivery".
+    #   SHELLWATCH_KEYS_URL: "http://shellwatch:8080/demo/authorized-keys"
+    #   SHELLWATCH_KEYS_TIMEOUT: "4"   # seconds, default 4
     restart: unless-stopped
     mem_limit: 256m
     pids_limit: 200
