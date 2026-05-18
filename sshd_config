@@ -15,7 +15,23 @@ PermitRootLogin no
 PasswordAuthentication no
 KbdInteractiveAuthentication no
 PubkeyAuthentication yes
-AuthorizedKeysFile /var/lib/demo/keys/%u
+
+# Keys are resolved by a helper script rather than a static file. The
+# script (payloads/auth-keys.sh) picks one of three modes via env vars:
+#   AUTH_KEYS_ANY=true  -> echo the offered key back, blanket-approving
+#                          any keypair the client presents (handshake
+#                          still signs and verifies normally).
+#   AUTH_KEYS_URL=<url> -> HTTP GET against the URL.
+#   (neither)           -> read /var/lib/demo/keys/<user> (file mode).
+# Token expansion: %u = user, %t = offered key type, %f = SHA256
+# fingerprint, %k = base64 blob of the offered key (needed for the
+# blanket-approve mode).
+# `none` disables the default ~/.ssh/authorized_keys lookups — we don't
+# need them (demo users have no home), and skipping them removes one
+# pointless preauth step per connection.
+AuthorizedKeysFile none
+AuthorizedKeysCommand /usr/local/lib/demo/auth-keys.sh %u %t %f %k
+AuthorizedKeysCommandUser nobody
 
 # Explicitly allow ShellWatch's headline credential (WebAuthn-anchored sk key).
 # `+` appends to OpenSSH's defaults so we don't accidentally narrow other algorithms.
@@ -28,15 +44,16 @@ PubkeyAcceptedAlgorithms +webauthn-sk-ecdsa-sha2-nistp256@openssh.com
 # Until then the cert algorithm is allowed but no certs will validate.
 # TrustedUserCAKeys /etc/ssh/shellwatch_ca.pub
 
-# Off so bind-mounted authorized_keys files (owned by the host UID under
-# Docker Desktop) aren't rejected. Safe here: PasswordAuthentication is off
-# and every principal is pinned to a ForceCommand, so the ownership/mode
-# check isn't gating anything meaningful.
-StrictModes no
-
 # LogLevel is set on the sshd command line in entrypoint.sh (driven by
 # $SSHD_LOG_LEVEL, default INFO). Override there, not here, so we have one
 # source of truth.
+
+# /run is on the read-only rootfs in the documented run config; sshd's
+# default /run/sshd.pid write fails with EROFS and logs a warning. The
+# pidfile is functionally useless inside a container (PID 1 is what the
+# runtime stops/signals, not whatever this points at), but redirecting
+# to the /tmp tmpfs costs nothing and silences the warning.
+PidFile /tmp/sshd.pid
 
 UseDNS no
 

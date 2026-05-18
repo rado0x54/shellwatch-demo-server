@@ -35,6 +35,7 @@ RUN apk add --no-cache \
       openssh-server \
       bsd-games cmatrix \
       ncurses \
+      curl \
       tini
 
 # nudoku + 2048 binaries from the build stages
@@ -53,8 +54,11 @@ RUN mkdir -p /var/empty && chown root:root /var/empty && chmod 0755 /var/empty &
       sed -i "s|^${u}:!:|${u}:*:|" /etc/shadow; \
     done
 
-# authorized_keys directory: one empty file per principal.
-# Mounted read-only at runtime by ShellWatch's authorizedKeyFile delivery.
+# authorized_keys directory: one empty file per principal. Used only in
+# file mode (AUTH_KEYS_URL unset and AUTH_KEYS_ANY=false). In file mode
+# the directory is typically bind-mounted read-only at runtime by
+# ShellWatch's authorizedKeyFile delivery. Endpoint and blanket-approve
+# modes never read from here.
 RUN mkdir -p /var/lib/demo/keys && \
     for u in $DEMO_USERS; do \
       install -o "$u" -g "$u" -m 0644 /dev/null "/var/lib/demo/keys/$u"; \

@@ -14,4 +14,18 @@ for type in ed25519 rsa ecdsa; do
     fi
 done
 
+# sshd's AuthorizedKeysCommand runs in a scrubbed environment, so docker
+# `-e` values don't reach auth-keys.sh directly. Snapshot the runtime
+# config into a file the script can source. Living in /tmp keeps this
+# writable under `--read-only` rootfs (tmpfs is the documented mount).
+# Single-quoted to neutralize shell metachars in values; we trust the
+# operator setting docker env, so embedded `'` is not in the threat
+# model.
+cat > /tmp/auth-keys.conf <<EOF
+AUTH_KEYS_ANY='${AUTH_KEYS_ANY:-}'
+AUTH_KEYS_URL='${AUTH_KEYS_URL:-}'
+AUTH_KEYS_TIMEOUT='${AUTH_KEYS_TIMEOUT:-2}'
+EOF
+chmod 0644 /tmp/auth-keys.conf
+
 exec /usr/sbin/sshd -D -e -o "LogLevel=${SSHD_LOG_LEVEL:-INFO}"

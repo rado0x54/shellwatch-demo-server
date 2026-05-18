@@ -7,7 +7,7 @@ A minimal Alpine-based SSH server that hosts non-interactive ASCII payloads unde
 - Single container, single open port (22).
 - One Linux user per demo (`sw-snake`, `sw-matrix`, `sw-sudoku`, `sw-2048`).
 - Each user's session runs **one** command and exits — no shell, no arbitrary execution.
-- Authorized keys live in `/var/lib/demo/keys/%u` and are read at login time; mount this directory from your ShellWatch deployment to populate it dynamically.
+- Authorized keys come from one of two sources, selected at runtime: a bind-mounted per-user file or a live HTTP lookup against ShellWatch. See [Key delivery](#key-delivery).
 
 ## Principals
 
@@ -28,6 +28,57 @@ Pubkey-only. The sshd is explicitly configured to accept ShellWatch's headline c
 - `webauthn-sk-ecdsa-sha2-nistp256-cert-v01@openssh.com` — the certificate variant. Enabled today; will start validating once `TrustedUserCAKeys` is pointed at a ShellWatch CA pubkey (see commented line in `sshd_config`). Tracks ShellWatch [#209](https://github.com/rado0x54/ShellWatch/issues/209).
 
 OpenSSH's other default pubkey algorithms remain enabled (`ssh-ed25519`, `ecdsa-sha2-nistp256`, etc.) — useful for testing with a regular keypair before passkey integration is wired up end-to-end.
+
+## Key delivery
+
+sshd resolves authorized keys through an `AuthorizedKeysCommand` helper (`/usr/local/lib/demo/auth-keys.sh`) rather than a static `AuthorizedKeysFile`. The helper picks one of three modes; the first env var set wins:
+
+| Env var | Mode | What the helper does |
+|---|---|---|
+| `AUTH_KEYS_ANY=true` | **Blanket-approve** | Echoes the offered key back as-is so sshd verifies the signature against it. Any valid keypair authenticates. Handshake unchanged — challenge and signature still run. |
+| `AUTH_KEYS_URL=<url>` | **Endpoint** | `GET <url>?user=<u>&type=<t>&fingerprint=<f>` per offered key. |
+| (neither) | **File** | `cat /var/lib/demo/keys/<user>` — same shape as the legacy `AuthorizedKeysFile` flow. Bind-mount the directory from ShellWatch or supply it locally. |
+
+`AUTH_KEYS_TIMEOUT` (seconds, default `2`) caps each HTTP call via `curl --max-time` — OpenSSH itself doesn't ship a directive for this, so the script enforces it.
+
+`AuthorizedKeysFile` is set to `none` so the helper is the *only* key source. Without that, sshd would also probe each user's default `~/.ssh/authorized_keys` first — wasted work in this image where demo users have no home dir.
+
+### Blanket-approve mode: why the handshake still works
+
+`AuthorizedKeysCommand` runs *before* sshd verifies the signature. Its job is to return the set of authorized keys; sshd then asks "is the key the client offered in this set?", and only if yes does it ask the client to sign a challenge and verifies the signature against that same key. By echoing back the exact key the client offered (token `%k`), we trivially pass step one — sshd still runs the cryptographic challenge/verify in step two. So "any keypair works" means "any keypair the client actually holds the private half for" — random pubkeys don't grant access without the signing capability.
+
+Tradeoff: no membership gating. Anyone with `ssh-keygen` + the host can connect. For a demo locked down by `ForceCommand`, `timeout 600`, resource caps, and no shell, the realistic blast radius is "someone scripts a bot to play 2048 and burns `MaxStartups` slots" — annoying, not catastrophic.
+
+### Endpoint contract
+
+```
+GET /demo/authorized-keys?user=sw-matrix&type=ssh-ed25519&fingerprint=SHA256:abc123…
+→ 200 text/plain
+ssh-ed25519 AAAAC3Nz... matching-key-comment
+```
+
+- One key per line, OpenSSH `authorized_keys` format (per-key `options` prefix permitted).
+- 200 + empty body → no match → sshd denies cleanly (no error log).
+- Anything non-2xx (404, 5xx, timeout) → curl exits non-zero → sshd logs `AuthorizedKeysCommand … failed` and denies.
+- `fingerprint` is the full `SHA256:<base64>` form sshd already computes; index on it directly.
+
+The helper passes the fingerprint of the *specific key being offered*, so the endpoint should answer with just the matching key, not the user's full keyring. That keeps payloads small and lets ShellWatch log "user X attempted auth as sw-matrix with fingerprint Y at T" trivially.
+
+The request/response is auth-adjacent telemetry — username, key type, and fingerprint go out in the query string; pubkeys come back. Plaintext HTTP over a same-host docker network is fine; **use TLS over any link that isn't strictly trusted** (cross-host bridge, VPN-tunneled, or any path where sniffing access is plausible).
+
+### Request volume per SSH connection
+
+SSH pubkey auth is two-phase: clients first *offer* a public key, sshd answers yes/no, and only then does the client sign. Each phase invokes `AuthorizedKeysCommand` independently (stock OpenSSH has no in-process cache between them). So a client offering N keys where the Kth one works produces **K offer-phase calls + 1 prove-phase call** to the endpoint. Mitigations:
+
+- **Client side:** `IdentitiesOnly yes` + a single `IdentityFile` collapses this to two calls. Worth recommending to demo users with full ssh-agents.
+- **Endpoint side:** short-TTL cache in ShellWatch keyed on `(user, fingerprint)` — the prove-phase call hits cache.
+- **Server side:** `MaxAuthTries 3` (sshd default 6 — consider lowering) bounds the worst case from a misbehaving client.
+
+`LoginGraceTime 10` (in `sshd_config`) caps total connect time, including all `AuthorizedKeysCommand` calls. With the default `AUTH_KEYS_TIMEOUT=2` you have ~5 maxed-out lookups before the connection is force-closed — well past the realistic offer count. If you tune either knob upward, make sure the product still leaves headroom under `LoginGraceTime`.
+
+### File-mode permissions note
+
+In file mode the helper runs as `nobody` (via `AuthorizedKeysCommandUser`), not as the target user, so per-user key files need to be world-readable (`0644`). The image bakes this in; if you bind-mount a host file in its place, make sure it's `chmod 0644` or owned by a UID `nobody` can read. Previously sshd opened the file itself as the target user, which is why the config used to carry `StrictModes no` — that workaround is now gone.
 
 ## Local development
 
@@ -65,10 +116,14 @@ docker run -d \
   ghcr.io/rado0x54/shellwatch-demo-server:latest
 ```
 
-- `/var/lib/demo/keys` (read-only mount): one file per principal containing OpenSSH-format public keys, one per line. Populated by ShellWatch's `authorizedKeyFile` key-delivery mechanism.
+- `/var/lib/demo/keys` (read-only mount, **file mode only**): one file per principal containing OpenSSH-format public keys, one per line, mode `0644`. Populated by ShellWatch's `authorizedKeyFile` key-delivery mechanism. Omit the mount entirely when running in endpoint mode (`AUTH_KEYS_URL` set) or blanket-approve mode (`AUTH_KEYS_ANY=true`).
 - `/var/lib/demo/host-keys` (named volume): persists SSH host keys across container restarts so clients don't see fingerprint changes. The rest of `/etc/ssh` (including `sshd_config`) lives in the image and is never shadowed — config changes always take effect on rebuild.
 
+To run in endpoint mode instead, drop the `/var/lib/demo/keys` mount and pass `-e AUTH_KEYS_URL=https://shellwatch.example/demo/authorized-keys`. To run in blanket-approve mode, drop the mount and pass `-e AUTH_KEYS_ANY=true`.
+
 ## Run alongside ShellWatch (docker compose)
+
+### File mode — shared volume
 
 ```yaml
 services:
@@ -97,6 +152,62 @@ volumes:
 ```
 
 ShellWatch's `onboardingEndpoints` config writes per-principal authorized-keys files to `/var/lib/shellwatch/demo-keys/<principal>`; the demo container reads the same volume read-only at `/var/lib/demo/keys/<principal>`. sshd re-reads each file on every connection — no signal or restart needed.
+
+### Endpoint mode — live HTTP lookup
+
+```yaml
+services:
+  shellwatch:
+    image: ghcr.io/rado0x54/shellwatch:latest
+    # ShellWatch exposes GET /demo/authorized-keys?user=&type=&fingerprint=
+    # to the demo server on the internal network.
+
+  shellwatch-demo:
+    image: ghcr.io/rado0x54/shellwatch-demo-server:latest
+    ports:
+      - "22:22"
+    environment:
+      AUTH_KEYS_URL: "http://shellwatch:8080/demo/authorized-keys"
+      # AUTH_KEYS_TIMEOUT: "2"
+    volumes:
+      - demo-ssh-host-keys:/var/lib/demo/host-keys
+    restart: unless-stopped
+    mem_limit: 256m
+    pids_limit: 200
+    read_only: true
+    tmpfs:
+      - /tmp:size=10m,mode=1777
+
+volumes:
+  demo-ssh-host-keys:
+```
+
+No shared volume needed — the demo server asks ShellWatch on every offered key. Removes the file-sync coupling, at the cost of putting ShellWatch on the SSH critical path. See [Key delivery](#key-delivery) for the endpoint contract and the per-connection request volume.
+
+### Blanket-approve mode — no key source needed
+
+```yaml
+services:
+  shellwatch-demo:
+    image: ghcr.io/rado0x54/shellwatch-demo-server:latest
+    ports:
+      - "22:22"
+    environment:
+      AUTH_KEYS_ANY: "true"
+    volumes:
+      - demo-ssh-host-keys:/var/lib/demo/host-keys
+    restart: unless-stopped
+    mem_limit: 256m
+    pids_limit: 200
+    read_only: true
+    tmpfs:
+      - /tmp:size=10m,mode=1777
+
+volumes:
+  demo-ssh-host-keys:
+```
+
+Standalone — no ShellWatch process required, no shared volume, no HTTP endpoint. Any client that holds the private half of *any* keypair can connect to any principal. The container's `ForceCommand` + `timeout 600` + read-only rootfs + resource caps remain the only thing between a connecting client and the box.
 
 ## Hardening defaults baked in
 
