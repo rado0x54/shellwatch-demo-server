@@ -27,20 +27,34 @@ WORKDIR /src/2048.c
 RUN make -j"$(nproc)" && make install PREFIX=/usr DESTDIR=/out
 
 
+# Build abakh/nbsdgames from source for `snakeduel`. The collection isn't
+# packaged for Alpine. We only want the one binary, so skip `make install`
+# (which would drop ~20 binaries into /usr/bin) and copy snakeduel directly.
+# Pinned to the latest release tag rather than master so the image is
+# reproducible across rebuilds.
+FROM alpine:3.20 AS nbsdgames-build
+RUN apk add --no-cache build-base git ncurses-dev
+WORKDIR /src
+RUN git clone --depth 1 --branch v6.0.1 https://github.com/abakh/nbsdgames
+WORKDIR /src/nbsdgames
+RUN make -j"$(nproc)" snakeduel
+
+
 FROM alpine:3.20
 
 ARG DEMO_USERS="sw-snake sw-matrix sw-sudoku sw-2048"
 
 RUN apk add --no-cache \
       openssh-server \
-      bsd-games cmatrix \
+      cmatrix \
       ncurses \
       curl \
       tini
 
-# nudoku + 2048 binaries from the build stages
+# nudoku + 2048 + snakeduel binaries from the build stages
 COPY --from=nudoku-build /out/usr/ /usr/
 COPY --from=twentyfortyeight-build /out/usr/ /usr/
+COPY --from=nbsdgames-build /src/nbsdgames/snakeduel /usr/bin/snakeduel
 
 # One Linux user per principal. /bin/ash so ForceCommand works (nologin would
 # cause sshd to skip ForceCommand). -H avoids creating per-user home dirs;

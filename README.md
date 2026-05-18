@@ -13,12 +13,12 @@ A minimal Alpine-based SSH server that hosts non-interactive ASCII payloads unde
 
 | User | Payload |
 |---|---|
-| `sw-snake` | `snake` (from `bsd-games`) |
+| `sw-snake` | `snakeduel` (built from source — [abakh/nbsdgames](https://github.com/abakh/nbsdgames), pinned to `v6.0.1`) |
 | `sw-matrix` | `cmatrix -s -u 5` (any key exits) |
 | `sw-sudoku` | `nudoku` (built from source, `--without-cairo`) |
 | `sw-2048` | `2048` (built from source — [mevdschee/2048.c](https://github.com/mevdschee/2048.c)) |
 
-Each payload is wrapped in `timeout 600` so a wedged client cannot pin a session. Turn-based payloads like `nudoku` are the agent-friendly headline — they compose well with the audit-log/HITL story. Real-time payloads (`snake`, `cmatrix`) stay for quick visual smoke tests of the SSH path; `ninvaders` and `bastet` were dropped early on for being too action-heavy.
+Each payload is wrapped in `timeout 1800` so a wedged client cannot pin a session. Turn-based payloads like `nudoku` are the agent-friendly headline — they compose well with the audit-log/HITL story. Real-time payloads (`snakeduel`, `cmatrix`) stay for quick visual smoke tests of the SSH path; `ninvaders` and `bastet` were dropped early on for being too action-heavy.
 
 ## Authentication
 
@@ -47,7 +47,7 @@ sshd resolves authorized keys through an `AuthorizedKeysCommand` helper (`/usr/l
 
 `AuthorizedKeysCommand` runs *before* sshd verifies the signature. Its job is to return the set of authorized keys; sshd then asks "is the key the client offered in this set?", and only if yes does it ask the client to sign a challenge and verifies the signature against that same key. By echoing back the exact key the client offered (token `%k`), we trivially pass step one — sshd still runs the cryptographic challenge/verify in step two. So "any keypair works" means "any keypair the client actually holds the private half for" — random pubkeys don't grant access without the signing capability.
 
-Tradeoff: no membership gating. Anyone with `ssh-keygen` + the host can connect. For a demo locked down by `ForceCommand`, `timeout 600`, resource caps, and no shell, the realistic blast radius is "someone scripts a bot to play 2048 and burns `MaxStartups` slots" — annoying, not catastrophic.
+Tradeoff: no membership gating. Anyone with `ssh-keygen` + the host can connect. For a demo locked down by `ForceCommand`, `timeout 1800`, resource caps, and no shell, the realistic blast radius is "someone scripts a bot to play 2048 and burns `MaxStartups` slots" — annoying, not catastrophic.
 
 ### Endpoint contract
 
@@ -207,7 +207,7 @@ volumes:
   demo-ssh-host-keys:
 ```
 
-Standalone — no ShellWatch process required, no shared volume, no HTTP endpoint. Any client that holds the private half of *any* keypair can connect to any principal. The container's `ForceCommand` + `timeout 600` + read-only rootfs + resource caps remain the only thing between a connecting client and the box.
+Standalone — no ShellWatch process required, no shared volume, no HTTP endpoint. Any client that holds the private half of *any* keypair can connect to any principal. The container's `ForceCommand` + `timeout 1800` + read-only rootfs + resource caps remain the only thing between a connecting client and the box.
 
 ## Hardening defaults baked in
 
@@ -215,7 +215,7 @@ Standalone — no ShellWatch process required, no shared volume, no HTTP endpoin
 - Per-user `ForceCommand` — no interactive shell.
 - TCP, agent, X11, and tunnel forwarding all disabled.
 - `PermitUserRC no`, `PermitUserEnvironment no`.
-- `timeout 600` wall-clock cap per payload.
+- `timeout 1800` wall-clock cap per payload.
 - `MaxStartups 10:30:60` + `LoginGraceTime 10` to blunt connect storms.
 - Read-only rootfs and ephemeral tmpfs for `/tmp` are expected at runtime (set them in your compose/run command).
 
