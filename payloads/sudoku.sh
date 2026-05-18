@@ -1,3 +1,3 @@
 #!/bin/sh
 # SPDX-License-Identifier: MIT
-exec timeout 600 nudoku -d hard
+exec timeout 1800 nudoku -d hard
