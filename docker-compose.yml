@@ -34,7 +34,7 @@ services:
     #   #
     #   # 2. Endpoint: GET the URL with ?user=&type=&fingerprint= per offered key.
     #   AUTH_KEYS_URL: "http://shellwatch:8080/demo/authorized-keys"
-    #   AUTH_KEYS_TIMEOUT: "4"   # seconds, default 4
+    #   AUTH_KEYS_TIMEOUT: "2"   # seconds, default 2
     #
     # File mode (the default for this compose file) needs neither var set
     # and keeps the bind mount above.

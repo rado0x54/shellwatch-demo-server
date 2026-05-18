@@ -39,7 +39,7 @@ sshd resolves authorized keys through an `AuthorizedKeysCommand` helper (`/usr/l
 | `AUTH_KEYS_URL=<url>` | **Endpoint** | `GET <url>?user=<u>&type=<t>&fingerprint=<f>` per offered key. |
 | (neither) | **File** | `cat /var/lib/demo/keys/<user>` — same shape as the legacy `AuthorizedKeysFile` flow. Bind-mount the directory from ShellWatch or supply it locally. |
 
-`AUTH_KEYS_TIMEOUT` (seconds, default `4`) caps each HTTP call via `curl --max-time` — OpenSSH itself doesn't ship a directive for this, so the script enforces it.
+`AUTH_KEYS_TIMEOUT` (seconds, default `2`) caps each HTTP call via `curl --max-time` — OpenSSH itself doesn't ship a directive for this, so the script enforces it.
 
 `AuthorizedKeysFile` is set to `none` so the helper is the *only* key source. Without that, sshd would also probe each user's default `~/.ssh/authorized_keys` first — wasted work in this image where demo users have no home dir.
 
@@ -64,6 +64,8 @@ ssh-ed25519 AAAAC3Nz... matching-key-comment
 
 The helper passes the fingerprint of the *specific key being offered*, so the endpoint should answer with just the matching key, not the user's full keyring. That keeps payloads small and lets ShellWatch log "user X attempted auth as sw-matrix with fingerprint Y at T" trivially.
 
+The request/response is auth-adjacent telemetry — username, key type, and fingerprint go out in the query string; pubkeys come back. Plaintext HTTP over a same-host docker network is fine; **use TLS over any link that isn't strictly trusted** (cross-host bridge, VPN-tunneled, or any path where sniffing access is plausible).
+
 ### Request volume per SSH connection
 
 SSH pubkey auth is two-phase: clients first *offer* a public key, sshd answers yes/no, and only then does the client sign. Each phase invokes `AuthorizedKeysCommand` independently (stock OpenSSH has no in-process cache between them). So a client offering N keys where the Kth one works produces **K offer-phase calls + 1 prove-phase call** to the endpoint. Mitigations:
@@ -71,6 +73,8 @@ SSH pubkey auth is two-phase: clients first *offer* a public key, sshd answers y
 - **Client side:** `IdentitiesOnly yes` + a single `IdentityFile` collapses this to two calls. Worth recommending to demo users with full ssh-agents.
 - **Endpoint side:** short-TTL cache in ShellWatch keyed on `(user, fingerprint)` — the prove-phase call hits cache.
 - **Server side:** `MaxAuthTries 3` (sshd default 6 — consider lowering) bounds the worst case from a misbehaving client.
+
+`LoginGraceTime 10` (in `sshd_config`) caps total connect time, including all `AuthorizedKeysCommand` calls. With the default `AUTH_KEYS_TIMEOUT=2` you have ~5 maxed-out lookups before the connection is force-closed — well past the realistic offer count. If you tune either knob upward, make sure the product still leaves headroom under `LoginGraceTime`.
 
 ### File-mode permissions note
 
@@ -112,7 +116,7 @@ docker run -d \
   ghcr.io/rado0x54/shellwatch-demo-server:latest
 ```
 
-- `/var/lib/demo/keys` (read-only mount, **file mode only**): one file per principal containing OpenSSH-format public keys, one per line, mode `0644`. Populated by ShellWatch's `authorizedKeyFile` key-delivery mechanism. Omit the mount entirely when running in endpoint mode (`SHELLWATCH_KEYS_URL` set).
+- `/var/lib/demo/keys` (read-only mount, **file mode only**): one file per principal containing OpenSSH-format public keys, one per line, mode `0644`. Populated by ShellWatch's `authorizedKeyFile` key-delivery mechanism. Omit the mount entirely when running in endpoint mode (`AUTH_KEYS_URL` set) or blanket-approve mode (`AUTH_KEYS_ANY=true`).
 - `/var/lib/demo/host-keys` (named volume): persists SSH host keys across container restarts so clients don't see fingerprint changes. The rest of `/etc/ssh` (including `sshd_config`) lives in the image and is never shadowed — config changes always take effect on rebuild.
 
 To run in endpoint mode instead, drop the `/var/lib/demo/keys` mount and pass `-e AUTH_KEYS_URL=https://shellwatch.example/demo/authorized-keys`. To run in blanket-approve mode, drop the mount and pass `-e AUTH_KEYS_ANY=true`.
@@ -164,7 +168,7 @@ services:
       - "22:22"
     environment:
       AUTH_KEYS_URL: "http://shellwatch:8080/demo/authorized-keys"
-      # AUTH_KEYS_TIMEOUT: "4"
+      # AUTH_KEYS_TIMEOUT: "2"
     volumes:
       - demo-ssh-host-keys:/var/lib/demo/host-keys
     restart: unless-stopped

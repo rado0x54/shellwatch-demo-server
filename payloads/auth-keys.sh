@@ -14,7 +14,7 @@
 #
 #   AUTH_KEYS_URL=<url>  Endpoint mode: HTTP GET against the URL with
 #                        ?user=&type=&fingerprint=, emit the body.
-#                        AUTH_KEYS_TIMEOUT (seconds, default 4) caps
+#                        AUTH_KEYS_TIMEOUT (seconds, default 2) caps
 #                        each request via curl --max-time.
 #
 #   (neither set)        File mode: cat /var/lib/demo/keys/<user>.
@@ -24,10 +24,10 @@
 #
 # sshd scrubs the parent environment when invoking AuthorizedKeysCommand,
 # so docker `-e` values don't reach us. entrypoint.sh snapshots them
-# into /var/lib/demo/auth-keys.conf at container start; source it here.
+# into /tmp/auth-keys.conf at container start; source it here.
 set -eu
 
-[ -r /var/lib/demo/auth-keys.conf ] && . /var/lib/demo/auth-keys.conf
+[ -r /tmp/auth-keys.conf ] && . /tmp/auth-keys.conf
 
 user="$1"
 keytype="$2"
@@ -42,7 +42,7 @@ case "${AUTH_KEYS_ANY:-}" in
 esac
 
 if [ -n "${AUTH_KEYS_URL:-}" ]; then
-    exec curl -fsS --max-time "${AUTH_KEYS_TIMEOUT:-4}" \
+    exec curl -fsS --max-time "${AUTH_KEYS_TIMEOUT:-2}" \
         --get \
         --data-urlencode "user=${user}" \
         --data-urlencode "type=${keytype}" \
@@ -52,3 +52,8 @@ fi
 
 keyfile="/var/lib/demo/keys/${user}"
 [ -r "$keyfile" ] && exec cat "$keyfile"
+
+# Fall-through: no mode matched, or file-mode keyfile missing. Exit clean
+# so sshd treats it as "no authorized keys" (deny without "command
+# failed" noise in the log) — matches endpoint-mode 200+empty.
+exit 0
