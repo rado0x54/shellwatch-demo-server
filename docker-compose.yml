@@ -25,11 +25,19 @@ services:
       - shellwatch-demo-host-keys:/var/lib/demo/host-keys
     # environment:
     #   SSHD_LOG_LEVEL: VERBOSE   # default INFO; VERBOSE logs key fingerprints
-    #   # Set SHELLWATCH_KEYS_URL to switch from file-mode (bind mount above) to
-    #   # endpoint-mode: sshd's AuthorizedKeysCommand will hit this URL on every
-    #   # offered key with ?user=&type=&fingerprint=. See README "Key delivery".
-    #   SHELLWATCH_KEYS_URL: "http://shellwatch:8080/demo/authorized-keys"
-    #   SHELLWATCH_KEYS_TIMEOUT: "4"   # seconds, default 4
+    #   # Pick one of the three key-delivery modes (see README "Key delivery"):
+    #   #
+    #   # 1. Blanket-approve: any keypair authenticates. Handshake still
+    #   #    challenges and verifies the signature; the server just doesn't
+    #   #    gate on which key was used. Removes the bind-mount above.
+    #   AUTH_KEYS_ANY: "true"
+    #   #
+    #   # 2. Endpoint: GET the URL with ?user=&type=&fingerprint= per offered key.
+    #   AUTH_KEYS_URL: "http://shellwatch:8080/demo/authorized-keys"
+    #   AUTH_KEYS_TIMEOUT: "4"   # seconds, default 4
+    #
+    # File mode (the default for this compose file) needs neither var set
+    # and keeps the bind mount above.
     restart: unless-stopped
     mem_limit: 256m
     pids_limit: 200

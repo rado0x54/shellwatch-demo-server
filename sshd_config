@@ -17,15 +17,20 @@ KbdInteractiveAuthentication no
 PubkeyAuthentication yes
 
 # Keys are resolved by a helper script rather than a static file. The
-# script (payloads/auth-keys.sh) branches on $SHELLWATCH_KEYS_URL:
-#   set   -> HTTP GET against ShellWatch with (user, key type, fingerprint)
-#   unset -> read /var/lib/demo/keys/<user> (legacy bind-mount mode)
-# %u = user, %t = offered key type, %f = SHA256 fingerprint of offered key.
+# script (payloads/auth-keys.sh) picks one of three modes via env vars:
+#   AUTH_KEYS_ANY=true  -> echo the offered key back, blanket-approving
+#                          any keypair the client presents (handshake
+#                          still signs and verifies normally).
+#   AUTH_KEYS_URL=<url> -> HTTP GET against the URL.
+#   (neither)           -> read /var/lib/demo/keys/<user> (file mode).
+# Token expansion: %u = user, %t = offered key type, %f = SHA256
+# fingerprint, %k = base64 blob of the offered key (needed for the
+# blanket-approve mode).
 # `none` disables the default ~/.ssh/authorized_keys lookups — we don't
 # need them (demo users have no home), and skipping them removes one
 # pointless preauth step per connection.
 AuthorizedKeysFile none
-AuthorizedKeysCommand /usr/local/lib/demo/auth-keys.sh %u %t %f
+AuthorizedKeysCommand /usr/local/lib/demo/auth-keys.sh %u %t %f %k
 AuthorizedKeysCommandUser nobody
 
 # Explicitly allow ShellWatch's headline credential (WebAuthn-anchored sk key).
