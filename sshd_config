@@ -48,6 +48,13 @@ PubkeyAcceptedAlgorithms +webauthn-sk-ecdsa-sha2-nistp256@openssh.com
 # $SSHD_LOG_LEVEL, default INFO). Override there, not here, so we have one
 # source of truth.
 
+# /run is on the read-only rootfs in the documented run config; sshd's
+# default /run/sshd.pid write fails with EROFS and logs a warning. The
+# pidfile is functionally useless inside a container (PID 1 is what the
+# runtime stops/signals, not whatever this points at), but redirecting
+# to the /tmp tmpfs costs nothing and silences the warning.
+PidFile /tmp/sshd.pid
+
 UseDNS no
 
 MaxStartups 10:30:60
